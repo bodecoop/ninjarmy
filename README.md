@@ -6,8 +6,6 @@ This project is built for developers who want **more leverage, less chaos**, and
 
 ---
 
-## What Is NinjArmy?
-
 NinjArmy lets you:
 
 * Ideate with a **Manager AI** that maintains global context
@@ -21,16 +19,14 @@ All of this runs **locally by default**. You bring your own API keys. No cloud l
 
 ---
 
-## Planned Features
-
-### MVP
+#### MVP
 
 * CLI-based manager
 * YAML-defined agents
 * Parallel agent execution
 * Git repo awareness
 
-### Future
+#### Future
 
 * Web UI with live agent monitoring
 * Prompt linting and refinement
@@ -39,8 +35,6 @@ All of this runs **locally by default**. You bring your own API keys. No cloud l
 * Local LLM support out of the box
 
 ---
-
-## Project Status
 
 **Early-stage / actively designed**
 
@@ -51,7 +45,3 @@ APIs, prompts, and architecture are still in progress.
 ## License
 
 MIT
-
----
-
-> *Build faster. Think deeper. Stay in control.*
