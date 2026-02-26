@@ -1,0 +1,6 @@
+agents:
+ - brute-force
+ - optimizer
+ - tester
+ - janitor
+ - architect

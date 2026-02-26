@@ -1,0 +1,6 @@
+[project]
+name = "ninjarmy"
+version = "0.1.0"
+
+[project.scripts]
+ninjarmy = "ninjarmy.cli.main:cli"
