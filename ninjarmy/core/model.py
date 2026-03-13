@@ -36,6 +36,7 @@ def start_session(project: str = ""):
 
 def end_session():
     conn.execute("UPDATE session SET active = 0 WHERE id = 1")
+    conn.execute("DELETE FROM agents")
     conn.commit()
 
 def is_session_active() -> bool:

@@ -89,10 +89,21 @@ class ManagerAgent:
                     for a in all_agents:
                         print(f"{a.id:<6} {a.name:<16} {a.role:<14} {a.get_status():<10} {a.task}")
 
+            elif cmd == "agent":
+                all_agents = AgentRegistry.all()
+                if not all_agents:
+                    print("No agents hired yet.")
+                agent = next((a for a in all_agents if tokens[1] == a.name), None)
+                if agent is None:
+                    print(f"Agent: '{tokens[1]}' not found. Run 'agents' to see active agents")
+                else:
+                    self.agentTerminal(agent)
+
             elif cmd == "help":
                 print("Commands:")
                 print("  hire <name> <role> [-- <task>]   Hire a new agent")
                 print("  agents                            List all agents")
+                print("  agent <name>                      Access agent")
                 print("  roles                             List all possible roles")
                 print("  help                              Show this message")
                 print("  exit                              End the session")
@@ -105,8 +116,40 @@ class ManagerAgent:
             else:
                 print(f"Unknown command '{cmd}'. Type 'help'.")
 
+    def agentTerminal(self, agent: Agent):
+         while True:
+            try:
+                raw = input(f"{agent.name}> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                return
+
+            if not raw:
+                continue
+
+            parts = raw.split(" -- ", maxsplit=1)
+            tokens = parts[0].split()
+            task = parts[1].strip() if len(parts) > 1 else ""
+            cmd = tokens[0].lower()
+
+            if cmd in ("exit", "quit", "manager"):
+                return
+            
+            elif cmd == "info":
+                print(f"ID:     {agent.id:04d}")
+                print(f"Name:   {agent.name}")
+                print(f"Role:   {agent.role}")
+                print(f"Status: {agent.get_status()}")
+                print(f"Task:   {agent.task or '(none)'}")
+
+            elif cmd == "help":
+                print("Commands:")
+                print("  info                              Show agent info")
+                print("  help                              Show this message")
+                print("  exit                              Return to manager")
+    
     @classmethod
     def get(cls):
         if not cls._instance:
             cls._instance = cls()
         return cls._instance
+    

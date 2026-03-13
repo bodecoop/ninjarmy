@@ -12,7 +12,21 @@ Include: project goal, key domain concepts, likely tasks agents will perform, an
 Be specific and actionable — this document will be given to AI agents as their project context.
 """
 
+_DEBUG_CONTEXT = """\
+# Debug Project Context
+
+**Goal:** Build a web scraper for e-commerce price tracking.
+
+**Domain Concepts:** products, prices, retailers, scrape jobs
+
+**Agent Tasks:** scrape product pages, normalize data, detect price changes
+
+**Constraints:** rate-limit requests, handle pagination
+"""
+
 def generate_project_context(project: str) -> str:
+    if os.getenv("NINJARMY_DEBUG"):
+        return _DEBUG_CONTEXT
     client = anthropic.Anthropic()
     response = client.messages.create(
         model="claude-haiku-4-5",
