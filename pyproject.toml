@@ -1,6 +1,15 @@
 [project]
 name = "ninjarmy"
 version = "0.1.0"
+dependencies = [
+    "click",
+    "pydantic",
+    "pyyaml",
+    "anthropic",
+    "python-dotenv",
+    "rich",
+    "textual",
+]
 
 [project.scripts]
 ninjarmy = "ninjarmy.cli.main:cli"

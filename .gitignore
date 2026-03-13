@@ -20,3 +20,7 @@ files_for_autograder_io/
 .vscode
 .vscode/
 *~
+
+# Project
+context.md
+state.sql

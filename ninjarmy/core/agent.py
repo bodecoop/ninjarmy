@@ -1,3 +1,4 @@
+import asyncio
 from ninjarmy.agents.agent_spec import AgentSpec
 
 class Agent:
@@ -8,6 +9,8 @@ class Agent:
         self.role: str = spec.role
         self.task: str = spec.task
         self.status: str = "stopped"
+        self.output_queue: asyncio.Queue = asyncio.Queue()
+        self.inbox: asyncio.Queue = asyncio.Queue()
 
     def stop(self):
         self.status = "stopped"
@@ -17,5 +20,9 @@ class Agent:
 
     def get_status(self) -> str:
         return self.status
+    
     def get_id(self) -> int:
         return self.id
+    
+    def get_name(self) -> str:
+        return self.name
