@@ -2,9 +2,11 @@
 import click
 from ninjarmy.core.registry import AgentRegistry
 from ninjarmy.core.manager import ManagerAgent
-from ninjarmy.core.model import is_session_active, end_session
+from ninjarmy.core.model import is_session_active, end_session, start_session
+from ninjarmy.core.context import generate_project_context, save_context
 from ninjarmy.cli.agent_cli import agents
 from rich.traceback import install
+from ninjarmy.tui.app import NinjarmyApp
 install(show_locals=True)
 
 @click.group()
@@ -21,7 +23,13 @@ def boot():
     if is_session_active():
         click.echo("Session already active. Run 'ninjarmy terminate' to shut down first.")
         return
-    ManagerAgent.get().run_repl()
+    # project = input("Describe your project: ").strip()
+    # start_session(project=project)
+    # click.echo("Generating project context...")
+    # context = generate_project_context(project)
+    # save_context(context)
+    click.echo("Launching TUI...")
+    NinjarmyApp().run()
 
 @cli.command()
 def terminate():
@@ -35,9 +43,6 @@ def terminate():
         click.echo(f"Shutting down {agent.get_name()} - id:{agent.get_id()}")
     end_session()
     click.echo("Session terminated.")
-
-
-cli.add_command(agents)
 
 if __name__ == "__main__":
     cli()

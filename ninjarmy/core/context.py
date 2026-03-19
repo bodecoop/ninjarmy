@@ -6,7 +6,7 @@ import ninjarmy
 _CONTEXT_PATH = Path(ninjarmy.__file__).parent / "state" / "context.md"
 
 _SYSTEM_PROMPT = """\
-You are a project context builder for an AI agent orchestration system called NinjArmy.
+You are a project context builder for an AI agent orchestration system.
 Given a user's project description, produce a concise, structured context document in Markdown.
 Include: project goal, key domain concepts, likely tasks agents will perform, and any constraints or priorities.
 Be specific and actionable — this document will be given to AI agents as their project context.

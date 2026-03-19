@@ -7,7 +7,7 @@ import ninjarmy
 from ninjarmy.core.manager import ManagerAgent
 from ninjarmy.core.registry import AgentRegistry
 from ninjarmy.core.model import is_session_active
-from ninjarmy.agents.agent_spec import AgentSpec, AgentCreateSpec
+from ninjarmy.agents.agent_schema import AgentSpec
 
 AGENTS_YAML = (Path(ninjarmy.__file__).parent/"agents"/"agents.yaml")
 

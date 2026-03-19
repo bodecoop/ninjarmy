@@ -1,7 +1,7 @@
 # ninjarmy.core.registry.py
 from ninjarmy.core.agent import Agent
 from typing import Dict
-from ninjarmy.agents.agent_spec import AgentSpec
+from ninjarmy.agents.agent_schema import AgentSpec
 from ninjarmy.core.model import load_agents, save_agent, delete_agent
 
 class AgentRegistry:
@@ -32,14 +32,14 @@ class AgentRegistry:
         delete_agent(id)
 
     @classmethod
-    def get(cls, id):
+    def get(cls, id) -> Agent:
         return cls._agents.get(id)
 
     @classmethod
-    def all(cls):
+    def all(cls) -> list[Agent]:
         return list(cls._agents.values())
     
     @classmethod
-    def agent_count(cls):
+    def agent_count(cls) -> int:
         return len(cls._agents)
     

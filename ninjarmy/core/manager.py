@@ -1,155 +1,82 @@
+import asyncio
+import os
 from pathlib import Path
-import yaml
+
+import anthropic
 import ninjarmy
-import readline  # noqa: F401 — enables arrow keys and history in input()
-from ninjarmy.agents.agent_spec import AgentSpec, AgentCreateSpec
-from ninjarmy.core.agent import Agent
+from ninjarmy.agents.agent_schema import AgentSpec, ManagerSpec
+from ninjarmy.core.agent import Agent, AgentMessage
 from ninjarmy.core.registry import AgentRegistry
 
-_AGENTS_YAML = Path(ninjarmy.__file__).parent / "agents" / "agents.yaml"
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "claude-haiku-4-5")
+STATE_PATH =Path(ninjarmy.__file__).parent / "state"
 
 class ManagerAgent:
     _instance = None
 
-    def __init__(self):
+    def __init__(self, spec: ManagerSpec):
         existing = AgentRegistry.all()
-        self.agent_ids = max((a.id for a in existing), default=0)
+        self.project_name = "todolist"
+        self.agent_ids = max((a.id for a in existing), default=0) # initalizes id counter
+        self.model: str = spec.model
+        self.output_queue: asyncio.Queue[AgentMessage] = asyncio.Queue()
+        self.inbox: asyncio.Queue[str] = asyncio.Queue()
+        self.history: list[dict] = []
+        self.system_prompt: str = self.build_system_prompt()
 
-    def hire_agent(self, spec: AgentCreateSpec) -> Agent:
+    def hire_agent(self, spec: AgentSpec) -> Agent:
         self.agent_ids += 1
-        agent = Agent(AgentSpec(name=spec.name, role=spec.role, task=spec.task, id=self.agent_ids))
+        agent = Agent(AgentSpec(name=spec.name, role=spec.role, task=spec.task, id=self.agent_ids, model=DEFAULT_MODEL))
         AgentRegistry.register(agent)
         agent.start()
+        # start agent.run s an asyncio task
         return agent
 
-    def run_repl(self):
-        from ninjarmy.core.model import start_session, end_session
+    def fire_agent(self, agent_id: int) -> None:
+        agent = AgentRegistry.get(agent_id)
+        if agent is None:
+            raise ValueError(f"No agent with id {agent_id}.")
+        agent.stop()
+        AgentRegistry.unregister(agent_id)
 
-        with open(_AGENTS_YAML) as f:
-            valid_roles = yaml.safe_load(f)["agents"]
+    def build_system_prompt(self) -> str:
+        instructions = "You are the Manager Agent coordinating a team of AI coding agents. Help the user plan and delegate development tasks."
+        context_path = Path(STATE_PATH / f"{self.project_name}_project_context.md")
+        project_context = context_path.read_text() if context_path.exists() else ""
+        if project_context:
+            return instructions + "\n\n ## Project Context \n" + project_context
+        return instructions
 
-        project = input("Describe your project: > ").strip()
-        start_session(project=project)
+    def send_message(self, msg: str) -> None:
+        self.inbox.put_nowait(msg)
 
-        print("Session started. Type 'help' for commands.")
-
-        print("Generating project context...")
-        from ninjarmy.core.context import generate_project_context, save_context
-        context = generate_project_context(project)
-        save_context(context)
-        print("\n--- Project Context ---")
-        print(context)
-        print("----------------------\n")
-
-        # future: ask user for more context/refine prompt if needed
-
-        while True:
-            try:
-                raw = input("manager> ").strip()
-            except (EOFError, KeyboardInterrupt):
-                end_session()
-                print("\nSession terminated.")
-                break
-
-            if not raw:
-                continue
-
-            parts = raw.split(" -- ", maxsplit=1)
-            tokens = parts[0].split()
-            task = parts[1].strip() if len(parts) > 1 else ""
-            cmd = tokens[0].lower()
-
-            if cmd in ("exit", "quit"):
-                end_session()
-                print("Session terminated.")
-                break
-
-            elif cmd == "hire":
-                if len(tokens) < 3:
-                    print("Usage: hire <name> <role> [-- <task>]")
-                    print(f"Roles: {', '.join(valid_roles)}")
-                    continue
-                name, role = tokens[1], tokens[2]
-                if role not in valid_roles:
-                    print(f"Unknown role '{role}'. Valid roles: {', '.join(valid_roles)}")
-                    continue
+    async def run(self) -> None:
+            client = anthropic.AsyncAnthropic()
+            while True:
                 try:
-                    agent = self.hire_agent(AgentCreateSpec(name=name, role=role, task=task))
-                    print(f"Hired '{agent.name}' (id:{agent.get_id():04d}) as {role}.")
-                except (ValueError, RuntimeError) as e:
-                    print(f"ERROR: {e}")
+                    msg = await asyncio.wait_for(self.inbox.get(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    continue # check status again
 
-            elif cmd == "agents":
-                all_agents = AgentRegistry.all()
-                if not all_agents:
-                    print("No agents hired yet.")
-                else:
-                    print(f"{'ID':<6} {'NAME':<16} {'ROLE':<14} {'STATUS':<10} TASK")
-                    print("-" * 70)
-                    for a in all_agents:
-                        print(f"{a.id:<6} {a.name:<16} {a.role:<14} {a.get_status():<10} {a.task}")
+                self.history.append({"role": "user", "content": msg})
 
-            elif cmd == "agent":
-                all_agents = AgentRegistry.all()
-                if not all_agents:
-                    print("No agents hired yet.")
-                agent = next((a for a in all_agents if tokens[1] == a.name), None)
-                if agent is None:
-                    print(f"Agent: '{tokens[1]}' not found. Run 'agents' to see active agents")
-                else:
-                    self.agentTerminal(agent)
+                full_text = ""
+                async with client.messages.stream(
+                    model=self.model,
+                    max_tokens=2048,
+                    # thinking={"type": "adaptive"},
+                    system=self.system_prompt,
+                    messages=self.history,
+                ) as stream:
+                    async for delta in stream.text_stream:
+                        full_text += delta
+                        await self.output_queue.put(AgentMessage(type="log", content=delta))
 
-            elif cmd == "help":
-                print("Commands:")
-                print("  hire <name> <role> [-- <task>]   Hire a new agent")
-                print("  agents                            List all agents")
-                print("  agent <name>                      Access agent")
-                print("  roles                             List all possible roles")
-                print("  help                              Show this message")
-                print("  exit                              End the session")
-                print(f"  Roles: {', '.join(valid_roles)}")
+                self.history.append({"role": "assistant", "content": full_text})
 
-            elif cmd == "roles":
-                print("Agent Roles:")
-                print(f"  {'\n'.join(valid_roles)}")
-
-            else:
-                print(f"Unknown command '{cmd}'. Type 'help'.")
-
-    def agentTerminal(self, agent: Agent):
-         while True:
-            try:
-                raw = input(f"{agent.name}> ").strip()
-            except (EOFError, KeyboardInterrupt):
-                return
-
-            if not raw:
-                continue
-
-            parts = raw.split(" -- ", maxsplit=1)
-            tokens = parts[0].split()
-            task = parts[1].strip() if len(parts) > 1 else ""
-            cmd = tokens[0].lower()
-
-            if cmd in ("exit", "quit", "manager"):
-                return
-            
-            elif cmd == "info":
-                print(f"ID:     {agent.id:04d}")
-                print(f"Name:   {agent.name}")
-                print(f"Role:   {agent.role}")
-                print(f"Status: {agent.get_status()}")
-                print(f"Task:   {agent.task or '(none)'}")
-
-            elif cmd == "help":
-                print("Commands:")
-                print("  info                              Show agent info")
-                print("  help                              Show this message")
-                print("  exit                              Return to manager")
-    
+        
     @classmethod
-    def get(cls):
+    def get(cls) -> "ManagerAgent":
         if not cls._instance:
-            cls._instance = cls()
+            cls._instance = cls(ManagerSpec())
         return cls._instance
-    

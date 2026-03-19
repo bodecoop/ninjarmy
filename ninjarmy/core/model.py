@@ -2,9 +2,10 @@ import sqlite3
 from datetime import datetime, UTC
 from pathlib import Path
 import ninjarmy
-from ninjarmy.agents.agent_spec import AgentSpec
+from ninjarmy.agents.agent_schema import AgentSpec
 
 DB_PATH =Path(ninjarmy.__file__).parent / "state" / "state.sql"
+STATE_PATH =Path(ninjarmy.__file__).parent / "state"
 DB_PATH.parent.mkdir(exist_ok=True)
 
 conn = sqlite3.connect(DB_PATH)
@@ -21,16 +22,19 @@ conn.execute("""
         id INTEGER PRIMARY KEY CHECK (id = 1),
         active INTEGER NOT NULL DEFAULT 0,
         started_at TEXT,
-        project TEXT
+        name TEXT
+        context TEXT
     )
 """)
 conn.commit()
 
 
-def start_session(project: str = ""):
+def start_session(name: str = ""):
+    context_path = Path(STATE_PATH / f"{name}_project_context.md")
+    context = context_path.read_text(encoding="utf-8") if context_path.exists() else None
     conn.execute(
-        "INSERT OR REPLACE INTO session (id, active, started_at, project) VALUES (1, 1, ?, ?)",
-        (datetime.now(UTC).isoformat(), project)
+        "INSERT OR REPLACE INTO session (id, active, started_at, name, context) VALUES (1, 1, ?, ?, ?)",
+        (datetime.now(UTC).isoformat(), name, context)
     )
     conn.commit()
 
