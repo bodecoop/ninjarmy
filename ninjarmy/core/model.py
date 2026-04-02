@@ -1,42 +1,52 @@
 import sqlite3
 from datetime import datetime, UTC
 from pathlib import Path
-import ninjarmy
+
 from ninjarmy.agents.agent_schema import AgentSpec
 
-DB_PATH =Path(ninjarmy.__file__).parent / "state" / "state.sql"
-STATE_PATH =Path(ninjarmy.__file__).parent / "state"
-DB_PATH.parent.mkdir(exist_ok=True)
+STATE_PATH: Path = None
+DB_PATH: Path = None
+conn: sqlite3.Connection = None
 
-conn = sqlite3.connect(DB_PATH)
-conn.execute("""
-    CREATE TABLE IF NOT EXISTS agents (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT,
-        role TEXT,
-        task TEXT
-    )
-""")
-conn.execute("""
-    CREATE TABLE IF NOT EXISTS session (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        active INTEGER NOT NULL DEFAULT 0,
-        started_at TEXT,
-        name TEXT
-        context TEXT
-    )
-""")
-conn.commit()
+
+def init(root: str) -> None:
+    global STATE_PATH, DB_PATH, conn
+    STATE_PATH = Path(root) / ".ninjarmy"
+    DB_PATH = STATE_PATH / "state.db"
+    STATE_PATH.mkdir(exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS agents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            role TEXT,
+            task TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS session (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            active INTEGER NOT NULL DEFAULT 0,
+            started_at TEXT,
+            name TEXT,
+            context TEXT
+        )
+    """)
+    conn.commit()
 
 
 def start_session(name: str = ""):
-    context_path = Path(STATE_PATH / f"{name}_project_context.md")
+    context_path = STATE_PATH / f"{name}_project_context.md"
     context = context_path.read_text(encoding="utf-8") if context_path.exists() else None
     conn.execute(
         "INSERT OR REPLACE INTO session (id, active, started_at, name, context) VALUES (1, 1, ?, ?, ?)",
         (datetime.now(UTC).isoformat(), name, context)
     )
     conn.commit()
+
+def load_session() -> dict | None:
+    row = conn.execute("SELECT name FROM session WHERE id = 1 AND active = 1").fetchone()
+    return {"name": row[0]} if row else None
 
 def end_session():
     conn.execute("UPDATE session SET active = 0 WHERE id = 1")

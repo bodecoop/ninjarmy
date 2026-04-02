@@ -20,7 +20,7 @@ class AgentRegistry:
     def register(cls, agent: Agent):
         if any(a.name == agent.name for a in cls._agents.values()):
             raise ValueError(f"An agent named '{agent.name}' already exists.")
-        print(f"Registering agent {agent.get_id()}")
+        print(f"Registering agent {agent.id}")
         cls._agents[agent.id] = agent
         save_agent(agent.spec)
 
