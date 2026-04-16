@@ -1,1 +1,0 @@
-A simple command line todo checklist app with python
