@@ -155,8 +155,8 @@ MIT
 
 ## More
 
-ninjarmy/tui/README.md
-ninjarmy/server/README.md
-ninjarmy/core/README.md
-ninjarmy/agents/README.md
-ninjarmy/cli/README.md
+- [TUI](ninjarmy/tui/README.md)
+- [Server](ninjarmy/server/README.md)
+- [Core](ninjarmy/core/README.md)
+- [Agents](ninjarmy/agents/README.md)
+- [CLI](ninjarmy/cli/README.md)
