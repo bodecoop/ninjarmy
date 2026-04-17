@@ -11,8 +11,10 @@ class AgentRegistry:
     def hydrate(cls):
         for row in load_agents():
             try:
-                spec = AgentSpec(id=row[0], name=row[1], role=row[2], task=row[3])
-                cls._agents[spec.id] = Agent(spec)
+                spec = AgentSpec(id=row[0], name=row[1], role=row[2], task=row[3], model=row[4])
+                agent = Agent(spec)
+                agent.start()
+                cls._agents[spec.id] = agent
             except Exception as e:
                 print(f"Warning: skipping corrupt agent row {row}: {e}")
 

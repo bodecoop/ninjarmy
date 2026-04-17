@@ -5,7 +5,6 @@ from ninjarmy.core.manager import ManagerAgent
 from ninjarmy.core import model
 from ninjarmy.core.model import is_session_active, end_session
 from ninjarmy.core.context import generate_project_context, save_context
-from ninjarmy.cli.agent_cli import agents
 from rich.traceback import install
 from ninjarmy.tui.app import NinjarmyApp
 import os
@@ -19,7 +18,6 @@ def cli():
     """
     pass
 
-cli.add_command(agents)
 
 @cli.command()
 def boot():

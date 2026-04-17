@@ -4,7 +4,7 @@ from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.containers import HorizontalScroll, Vertical, Horizontal
 from textual.screen import ModalScreen
-from textual.widgets import Button, Footer, Header, Label, Input, RichLog
+from textual.widgets import Button, Header, Label, Input, RichLog
 from rich.markdown import Markdown
 from rich.text import Text
 from textual.widget import Widget
@@ -32,7 +32,23 @@ def _render_tool_result(content: str) -> Text:
     t.append(preview, style="#555555")
     return t
 
-from ninjarmy.core import context, model
+
+def _render_route(content: str) -> Text:
+    """Format a manager→agent routing message like: → alice: do the thing"""
+    t = Text()
+    t.append("  ", style="")
+    t.append(content, style="bold #f0a500")
+    return t
+
+
+def _render_received(content: str) -> Text:
+    """Format an agent received-from-manager message like: ← Manager: do the thing"""
+    t = Text()
+    t.append("  ", style="")
+    t.append(content, style="bold #00d4ff")
+    return t
+
+from ninjarmy.core import model
 from ninjarmy.core.agent import Agent
 from ninjarmy.core.manager import ManagerAgent
 from ninjarmy.core.registry import AgentRegistry
@@ -51,13 +67,13 @@ class ProjectSetupScreen(ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
-            yield Label("New Project", classes="dialog-title")
+            yield Label("Project Setup", classes="dialog-title")
             yield Label("Project Name")
             yield Input(placeholder="my-project", id="name-input")
-            yield Label("Description")
-            yield Input(placeholder="What is this project?", id="desc-input")
+            yield Label("What should agents know about this codebase?")
+            yield Input(placeholder="Tech stack, goals, key files, known quirks...", id="desc-input")
             yield Label("", id="error-msg")
-            yield Button("Create Project", variant="primary", id="submit-btn")
+            yield Button("Get Started", variant="primary", id="submit-btn")
 
     def on_mount(self) -> None:
         self.query_one("#name-input", Input).focus()
@@ -115,6 +131,18 @@ class AgentWidget(Widget):
                     log.write(_render_tool_call(msg.content))
                 elif msg.type == "tool_result":
                     log.write(_render_tool_result(msg.content))
+                elif msg.type == "received":
+                    if buffer:
+                        log.write(Markdown(buffer))
+                        buffer = ""
+                    log.write(_render_received(msg.content))
+                elif msg.type == "system":
+                    if buffer:
+                        log.write(Markdown(buffer))
+                        buffer = ""
+                    t = Text()
+                    t.append(msg.content, style="bold #ff5555")
+                    log.write(t)
             except asyncio.TimeoutError:
                 if buffer:
                     log.write(Markdown(buffer))
@@ -152,6 +180,18 @@ class ManagerWidget(Widget):
                     log.write(_render_tool_call(msg.content))
                 elif msg.type == "tool_result":
                     log.write(_render_tool_result(msg.content))
+                elif msg.type == "route":
+                    if buffer:
+                        log.write(Markdown(buffer))
+                        buffer = ""
+                    log.write(_render_route(msg.content))
+                elif msg.type == "system":
+                    if buffer:
+                        log.write(Markdown(buffer))
+                        buffer = ""
+                    t = Text()
+                    t.append(msg.content, style="bold #ff5555")
+                    log.write(t)
             except asyncio.TimeoutError:
                 if buffer:
                     log.write(Markdown(buffer))
@@ -167,6 +207,7 @@ class NinjarmyApp(App):
     def __init__(self):
         super().__init__()
         self.manager = ManagerAgent.get()
+        AgentRegistry.hydrate()
         self.agents = AgentRegistry.all()
 
     def compose(self) -> ComposeResult:
@@ -216,16 +257,66 @@ class NinjarmyApp(App):
                 for a in agents:
                     log.write(f"[{a.id}] {a.name} ({a.role}) — {a.task}")
 
-        elif parts[0] == "/hire":
-            if len(parts) != 4:
-                log.write("Usage: /hire <name> <role> <task>")
+        elif parts[0] == "/stop":
+            target = parts[1] if len(parts) > 1 else None
+            agents = AgentRegistry.all()
+            if not target or target == "all":
+                for a in agents:
+                    a.stop()
+                log.write(Text.from_markup("[bold #ff5555]All agents stopped.[/bold #ff5555]"))
             else:
-                _, name, role, task = parts
-                agent = self.manager.hire_agent(name=name, role=role, task=task)
-                log.write(f"Hired {name} as {role} — {task}")
-                scroll = self.query_one("#agent-scroll", HorizontalScroll)
-                scroll.display = True
-                scroll.mount(AgentWidget(agent))
+                agent = next((a for a in agents if a.name == target), None)
+                if agent:
+                    agent.stop()
+                    log.write(Text.from_markup(f"[bold #ff5555]Stopped {target}.[/bold #ff5555]"))
+                else:
+                    log.write(f"[#ff5555]No agent named '{target}'.[/#ff5555]")
+
+        elif parts[0] == "/restart":
+            target = parts[1] if len(parts) > 1 else None
+            agents = AgentRegistry.all()
+            if not target or target == "all":
+                for a in agents:
+                    a.start()
+                log.write(Text.from_markup("[bold #00d4ff]All agents restarted.[/bold #00d4ff]"))
+            else:
+                agent = next((a for a in agents if a.name == target), None)
+                if agent:
+                    agent.start()
+                    log.write(Text.from_markup(f"[bold #00d4ff]Restarted {target}.[/bold #00d4ff]"))
+                else:
+                    log.write(f"[#ff5555]No agent named '{target}'.[/#ff5555]")
+
+        elif parts[0] == "/hire":
+            if len(parts) < 4:
+                log.write("Usage: /hire <name> <role> <task...>")
+            else:
+                _, name, role = parts[0], parts[1], parts[2]
+                task = " ".join(parts[3:])
+                try:
+                    agent = self.manager.hire_agent(name=name, role=role, task=task)
+                except ValueError as e:
+                    log.write(Text.from_markup(f"[bold #ff5555]Error:[/bold #ff5555] {e}"))
+                else:
+                    log.write(f"Hired {name} as {role} — {task}")
+                    scroll = self.query_one("#agent-scroll", HorizontalScroll)
+                    scroll.display = True
+                    scroll.mount(AgentWidget(agent))
+
+        elif parts[0] == "/help":
+            log.write(Text.from_markup("[bold #00d4ff]NinjArmy Commands[/bold #00d4ff]"))
+            log.write(Text.from_markup("[bold]/hire[/bold] [#aaaaaa]<name> <role> <task...>[/#aaaaaa]  —  Hire a new agent"))
+            log.write(Text.from_markup("[bold]/agents[/bold]  —  List all active agents"))
+            log.write(Text.from_markup("[bold]/stop[/bold] [#aaaaaa]<name|all>[/#aaaaaa]  —  Stop a specific agent or all agents"))
+            log.write(Text.from_markup("[bold]/restart[/bold] [#aaaaaa]<name|all>[/#aaaaaa]  —  Resume a stopped agent or all agents"))
+            log.write(Text.from_markup("[bold]/<name>[/bold] [#aaaaaa]<message>[/#aaaaaa]  —  Send a message directly to an agent"))
+            log.write(Text.from_markup("[bold #00d4ff]Available roles:[/bold #00d4ff]"))
+            log.write(Text.from_markup("  [bold]tester[/bold]       —  Writes tests, covers edge cases"))
+            log.write(Text.from_markup("  [bold]optimizer[/bold]    —  Improves performance and efficiency"))
+            log.write(Text.from_markup("  [bold]brute-force[/bold]  —  Gets it working fast, no frills"))
+            log.write(Text.from_markup("  [bold]janitor[/bold]      —  Refactors and cleans up code"))
+            log.write(Text.from_markup("  [bold]architect[/bold]    —  Designs systems and proposes structure"))
+            log.write(Text.from_markup("  [bold]custom[/bold]       —  General-purpose agent"))
 
         elif parts[0].startswith("/"):
             agent_name = parts[0][1:]
@@ -236,10 +327,10 @@ class NinjarmyApp(App):
                     log.write(f"[#ff5555]Usage: /{agent_name} <prompt>[/#ff5555]")
                 else:
                     agent.prompt(prompt_text)
-                    log.write(f"[#555555]→ {agent_name}: {prompt_text}[/#555555]")
+                    log.write(f"[#555555] -> {agent_name}: {prompt_text}[/#555555]")
             else:
                 log.write(f"[#ff5555]Unknown command or agent: {parts[0]}[/#ff5555]")
-
+        
         else:
             self.manager.send_message(msg)
 

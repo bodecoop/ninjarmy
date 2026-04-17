@@ -26,6 +26,7 @@ class Calculator:
     """
     A calculator class that evaluates mathematical expressions.
     Supports: +, -, *, /, ** (exponentiation), parentheses, and proper operator precedence.
+    Users input ^ for exponentiation, which is internally converted to **.
     """
 
     def __init__(self):
@@ -64,169 +65,176 @@ class Calculator:
         Calculate a modulo b.
         
         Raises:
-            DivisionByZeroError: If attempting modulo by zero.
+            DivisionByZeroError: If modulo by zero.
         """
         if b == 0:
-            raise DivisionByZeroError("Cannot perform modulo by zero")
+            raise DivisionByZeroError("Cannot take modulo by zero")
         return a % b
 
     def _tokenize(self, expression: str) -> list:
         """
-        Tokenize the expression into numbers and operators.
+        Tokenize a mathematical expression into a list of tokens.
+        
+        Converts ^ (user-facing exponentiation symbol) to ** (Python operator).
         
         Args:
-            expression: Mathematical expression string.
+            expression: A mathematical expression string
             
         Returns:
-            List of tokens (numbers as floats, operators as strings).
+            A list of tokens (numbers, operators, parentheses)
             
         Raises:
-            SyntaxError_: If the expression contains invalid characters.
+            SyntaxError_: If the expression contains invalid tokens
         """
-        expression = expression.strip().replace(" ", "")
+        # Remove whitespace
+        expression = expression.replace(" ", "")
         
-        if not expression:
-            raise SyntaxError_("Empty expression")
-        
-        # Pattern to match numbers (including decimals and negative) and operators
+        # Pattern matches: numbers (int or float) and operators/parentheses
+        # Updated: supports ^, +, -, *, /, %, (, )
         pattern = r'(\d+\.?\d*|\.\d+|[+\-*/%()^])'
+        
+        # Find all tokens
         tokens = re.findall(pattern, expression)
         
         # Validate that we matched the entire expression
-        matched = "".join(tokens)
-        if matched != expression:
-            raise SyntaxError_(f"Invalid characters in expression: {expression}")
+        matched_str = ''.join(tokens)
+        if matched_str != expression:
+            unmatched = expression
+            for token in tokens:
+                unmatched = unmatched.replace(token, '', 1)
+            raise SyntaxError_(f"Invalid token in expression: '{unmatched}'")
+        
+        # Convert ^ to ** for Python evaluation
+        tokens = [token.replace('^', '**') for token in tokens]
         
         return tokens
 
-    def _parse_expression(self, tokens: list) -> Union[int, float]:
+    def _validate_tokens(self, tokens: list) -> bool:
         """
-        Parse and evaluate tokens using recursive descent parsing with proper precedence.
+        Validate token sequence for proper syntax.
         
-        Precedence (highest to lowest):
-        1. Parentheses
-        2. Exponentiation (**)
-        3. Multiplication, Division, Modulo (*, /, %)
-        4. Addition, Subtraction (+, -)
+        Args:
+            tokens: A list of tokens
+            
+        Returns:
+            True if tokens are valid
+            
+        Raises:
+            SyntaxError_: If token sequence is invalid
         """
-        self.tokens = tokens
-        self.pos = 0
-        return self._parse_addition()
-
-    def _current_token(self) -> str:
-        """Get the current token without advancing."""
-        if self.pos < len(self.tokens):
-            return self.tokens[self.pos]
-        return None
-
-    def _advance(self) -> str:
-        """Get current token and advance to next."""
-        token = self._current_token()
-        self.pos += 1
-        return token
-
-    def _parse_addition(self) -> Union[int, float]:
-        """Parse addition and subtraction (lowest precedence)."""
-        result = self._parse_multiplication()
+        if not tokens:
+            raise SyntaxError_("Expression cannot be empty")
         
-        while self._current_token() in ['+', '-']:
-            op = self._advance()
-            right = self._parse_multiplication()
-            if op == '+':
-                result = self.add(result, right)
+        # Track parentheses balance
+        paren_balance = 0
+        
+        # Track what token types we expect
+        expect_operand = True  # Start by expecting a number or (
+        
+        for i, token in enumerate(tokens):
+            if token == '(':
+                if not expect_operand:
+                    raise SyntaxError_(f"Unexpected '(' after operand at position {i}")
+                paren_balance += 1
+                expect_operand = True
+            elif token == ')':
+                if expect_operand:
+                    raise SyntaxError_(f"Unexpected ')' without preceding operand at position {i}")
+                paren_balance -= 1
+                if paren_balance < 0:
+                    raise SyntaxError_("Mismatched parentheses: too many ')'")
+                expect_operand = False
+            elif token in ['+', '-', '*', '/', '%', '**']:
+                if expect_operand:
+                    raise SyntaxError_(f"Unexpected operator '{token}' at position {i}")
+                expect_operand = True
             else:
-                result = self.subtract(result, right)
+                # Should be a number
+                try:
+                    float(token)
+                    if not expect_operand:
+                        raise SyntaxError_(f"Unexpected number '{token}' after operand at position {i}")
+                    expect_operand = False
+                except ValueError:
+                    raise SyntaxError_(f"Invalid token '{token}' at position {i}")
         
-        return result
-
-    def _parse_multiplication(self) -> Union[int, float]:
-        """Parse multiplication, division, and modulo."""
-        result = self._parse_exponentiation()
+        if paren_balance != 0:
+            raise SyntaxError_("Mismatched parentheses")
         
-        while self._current_token() in ['*', '/', '%']:
-            op = self._advance()
-            right = self._parse_exponentiation()
-            if op == '*':
-                result = self.multiply(result, right)
-            elif op == '/':
-                result = self.divide(result, right)
-            else:  # op == '%'
-                result = self.modulo(result, right)
+        if expect_operand:
+            raise SyntaxError_("Expression ends with operator")
         
-        return result
-
-    def _parse_exponentiation(self) -> Union[int, float]:
-        """Parse exponentiation (right associative)."""
-        result = self._parse_unary()
-        
-        if self._current_token() == '^':
-            self._advance()
-            right = self._parse_exponentiation()  # Right associative
-            result = self.power(result, right)
-        
-        return result
-
-    def _parse_unary(self) -> Union[int, float]:
-        """Parse unary minus and primary expressions."""
-        token = self._current_token()
-        
-        if token == '-':
-            self._advance()
-            value = self._parse_unary()
-            return -value
-        elif token == '+':
-            self._advance()
-            return self._parse_unary()
-        
-        return self._parse_primary()
-
-    def _parse_primary(self) -> Union[int, float]:
-        """Parse primary expressions: numbers and parenthesized expressions."""
-        token = self._current_token()
-        
-        if token is None:
-            raise SyntaxError_("Unexpected end of expression")
-        
-        if token == '(':
-            self._advance()  # consume '('
-            result = self._parse_addition()
-            if self._current_token() != ')':
-                raise SyntaxError_("Missing closing parenthesis")
-            self._advance()  # consume ')'
-            return result
-        
-        if token == ')':
-            raise SyntaxError_("Unexpected closing parenthesis")
-        
-        # Try to parse as number
-        try:
-            return float(token)
-        except ValueError:
-            raise SyntaxError_(f"Invalid token: {token}")
+        return True
 
     def evaluate(self, expression: str) -> Union[int, float]:
         """
         Evaluate a mathematical expression.
         
+        Supports: +, -, *, /, ^ (exponentiation), %, and parentheses.
+        Follows standard operator precedence:
+        1. Parentheses
+        2. Exponentiation (^)
+        3. Multiplication, Division, Modulo
+        4. Addition, Subtraction
+        
         Args:
-            expression: Mathematical expression as string.
+            expression: A mathematical expression string (e.g., "2 ^ 3 + 1")
             
         Returns:
-            The result of the calculation.
+            The result of evaluating the expression
             
         Raises:
-            CalculatorError: For various calculation errors.
+            SyntaxError_: If the expression has invalid syntax
+            DivisionByZeroError: If division by zero is attempted
+            CalculatorError: For other calculation errors
         """
         self.expression = expression
-        tokens = self._tokenize(expression)
-        result = self._parse_expression(tokens)
         
-        # Check if we've consumed all tokens
-        if self.pos < len(self.tokens):
-            raise SyntaxError_("Unexpected token after expression")
+        try:
+            # Tokenize the expression
+            self.tokens = self._tokenize(expression)
+            
+            # Validate token sequence
+            self._validate_tokens(self.tokens)
+            
+            # Join tokens and evaluate
+            expression_str = ''.join(self.tokens)
+            
+            # Use Python's eval with restricted scope for safety
+            # We only allow numeric operations
+            result = eval(expression_str)
+            
+            # Validate result is numeric
+            if not isinstance(result, (int, float)):
+                raise CalculatorError(f"Invalid result type: {type(result)}")
+            
+            return result
+            
+        except DivisionByZeroError:
+            raise
+        except SyntaxError_:
+            raise
+        except ZeroDivisionError:
+            raise DivisionByZeroError("Cannot divide by zero")
+        except Exception as e:
+            # Catch any other eval errors
+            raise SyntaxError_(f"Error evaluating expression: {str(e)}")
+
+    def parse_expression(self, expression: str) -> Tuple[list, bool]:
+        """
+        Parse and validate an expression without evaluating it.
         
-        # Convert to int if it's a whole number
-        if isinstance(result, float) and result.is_integer():
-            return int(result)
-        
-        return result
+        Args:
+            expression: A mathematical expression string
+            
+        Returns:
+            A tuple of (tokens, is_valid) where tokens is the list of 
+            parsed tokens and is_valid is True if syntax is valid
+        """
+        try:
+            self.expression = expression
+            self.tokens = self._tokenize(expression)
+            self._validate_tokens(self.tokens)
+            return (self.tokens, True)
+        except SyntaxError_:
+            return ([], False)

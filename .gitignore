@@ -24,3 +24,5 @@ files_for_autograder_io/
 # Project
 context.md
 state.sql
+.ninjarmy/
+workspace/

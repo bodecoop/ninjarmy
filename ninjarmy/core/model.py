@@ -20,7 +20,8 @@ def init(root: str) -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT,
             role TEXT,
-            task TEXT
+            task TEXT,
+            model TEXT
         )
     """)
     conn.execute("""
@@ -43,6 +44,7 @@ def start_session(name: str = ""):
         (datetime.now(UTC).isoformat(), name, context)
     )
     conn.commit()
+    init_task_board()
 
 def load_session() -> dict | None:
     row = conn.execute("SELECT name FROM session WHERE id = 1 AND active = 1").fetchone()
@@ -60,8 +62,8 @@ def is_session_active() -> bool:
 def save_agent(spec: AgentSpec):
     try:
         conn.execute(
-            "INSERT INTO agents (id, name, role, task) VALUES (?, ?, ?, ?)",
-            (spec.id, spec.name, spec.role, spec.task)
+            "INSERT INTO agents (id, name, role, task, model) VALUES (?, ?, ?, ?, ?)",
+            (spec.id, spec.name, spec.role, spec.task, spec.model)
         )
         conn.commit()
     except sqlite3.Error as e:
@@ -74,3 +76,46 @@ def load_agents():
 def delete_agent(id: int):
     conn.execute("DELETE FROM agents WHERE id = ?", (id,))
     conn.commit()
+
+
+def _serialize_message(msg: dict) -> dict:
+    """Convert a history message to a JSON-safe dict.
+    Assistant messages from tool_use turns have list content containing
+    Anthropic SDK objects (ToolUseBlock, TextBlock) that must be converted
+    to plain dicts before serialization."""
+    content = msg.get("content")
+    if not isinstance(content, list):
+        return msg
+    serialized = []
+    for block in content:
+        if isinstance(block, dict):
+            serialized.append(block)
+        elif hasattr(block, "model_dump"):
+            serialized.append(block.model_dump())
+        else:
+            serialized.append({"type": "text", "text": str(block)})
+    return {**msg, "content": serialized}
+
+
+def save_history(name: str, history: list) -> None:
+    import json
+    serializable = [_serialize_message(m) for m in history[-20:]]
+    path = STATE_PATH / f"{name}_history.json"
+    path.write_text(json.dumps(serializable), encoding="utf-8")
+
+
+def load_history(name: str) -> list | None:
+    import json
+    path = STATE_PATH / f"{name}_history.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def init_task_board() -> None:
+    path = STATE_PATH / "task_board.md"
+    if not path.exists():
+        path.write_text("# Task Board\n\n", encoding="utf-8")
