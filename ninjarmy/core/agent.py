@@ -31,6 +31,14 @@ def _load_role_prompt(role: str) -> str:
     return f"You are a {role} coding agent. Complete your task thoroughly and directly."
 
 
+def get_valid_roles() -> list[str]:
+    try:
+        data = yaml.safe_load(_AGENTS_YAML.read_text())
+        return list(data.get("roles", {}).keys())
+    except Exception:
+        return []
+
+
 @dataclass
 class AgentMessage:
     type: Literal["log", "tool_call", "tool_result", "system", "received", "route"]
@@ -140,7 +148,7 @@ class Agent:
                     try:
                         async with client.messages.stream(
                             model=self.model,
-                            max_tokens=4096,
+                            max_tokens=8192,
                             tools=agent_schemas,
                             system=system,
                             messages=self.history,

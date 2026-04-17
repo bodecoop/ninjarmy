@@ -2,6 +2,8 @@
 
 **NinjArmy** is a local-first, open-source platform for orchestrating multiple AI coding agents. You build a team, assign roles, and watch them work in parallel - coordinated by a Manager AI that routes tasks and synthesizes results. Its vibe coding with more structure.
 
+![example frontend](image.png)
+
 ---
 
 ## What it does

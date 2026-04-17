@@ -3,13 +3,14 @@ import json
 import os
 import anthropic
 from ninjarmy.agents.agent_schema import AgentSpec, ManagerSpec
-from ninjarmy.core.agent import Agent, AgentMessage
+from ninjarmy.core.agent import Agent, AgentMessage, get_valid_roles
 from ninjarmy.core.registry import AgentRegistry
 from ninjarmy.core.tools import MANAGER_TOOLS, MANAGER_TOOL_SCHEMAS
 from ninjarmy.core import model
 
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "claude-haiku-4-5")
 NINJARMY_DEBUG = os.getenv("NINJARMY_DEBUG", 0)
+MANAGER_MAX_TOOL_ITERATIONS = 25
 
 class ManagerAgent:
     _instance = None
@@ -29,6 +30,9 @@ class ManagerAgent:
         self.root = root
 
     def hire_agent(self, name: str, task: str, role: str) -> Agent:
+        valid = get_valid_roles()
+        if valid and role not in valid:
+            raise ValueError(f"Unknown role '{role}'. Available roles: {', '.join(valid)}")
         self.agent_ids += 1
         agent = Agent(AgentSpec(name=name, role=role, task=task, id=self.agent_ids, model=DEFAULT_MODEL))
         AgentRegistry.register(agent)
@@ -93,7 +97,7 @@ class ManagerAgent:
             tool_iterations = 0
             while True:
                 tool_iterations += 1
-                if tool_iterations > 10:
+                if tool_iterations > MANAGER_MAX_TOOL_ITERATIONS:
                     await self._emit(AgentMessage(type="system", content="[safety] Tool loop exceeded 10 iterations. Stopping."))
                     break
 
