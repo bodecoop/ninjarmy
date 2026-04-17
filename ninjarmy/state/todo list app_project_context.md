@@ -1,1 +1,0 @@
-A simple checklist app build with react and typescript

@@ -152,3 +152,11 @@ ninjarmy/
 ## License
 
 MIT
+
+## More
+
+ninjarmy/tui/README.md
+ninjarmy/server/README.md
+ninjarmy/core/README.md
+ninjarmy/agents/README.md
+ninjarmy/cli/README.md

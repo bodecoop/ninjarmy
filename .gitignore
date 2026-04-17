@@ -26,3 +26,4 @@ context.md
 state.sql
 .ninjarmy/
 workspace/
+workspace/*
