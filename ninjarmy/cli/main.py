@@ -28,6 +28,24 @@ def boot():
     NinjarmyApp().run()
 
 @cli.command()
+@click.option("--port", default=7337, show_default=True, help="Port to listen on")
+def server(port):
+    """Start the web UI server."""
+    import uvicorn
+    root = os.getcwd()
+    model.init(root)
+    ManagerAgent.get().set_working_dir(root)
+    AgentRegistry.hydrate()
+    session = model.load_session()
+    if session:
+        manager = ManagerAgent.get()
+        manager.project_name = session["name"]
+        manager.system_prompt = manager.build_system_prompt()
+    click.echo(f"NinjArmy web UI running at http://localhost:{port}")
+    uvicorn.run("ninjarmy.server.app:app", host="0.0.0.0", port=port, reload=False)
+
+
+@cli.command()
 def terminate():
     """Disconnects all agents and clears the session."""
     if not is_session_active():

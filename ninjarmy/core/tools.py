@@ -56,6 +56,8 @@ def write_file(path: str, content: str, append: bool = False):
             f.write(content)
     else:
         file.write_text(content)
+    from ninjarmy.core.event_bus import EventBus
+    EventBus.get().publish({"type": "file_changed", "path": str(file)})
     return {"success": True, "path": str(file), "size_bytes": len(content.encode())}
 
 

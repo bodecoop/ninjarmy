@@ -78,11 +78,22 @@ class Agent:
             )
         return "\n\n".join(parts)
 
+    async def _emit(self, msg: AgentMessage) -> None:
+        await self.output_queue.put(msg)
+        from ninjarmy.core.event_bus import EventBus
+        EventBus.get().publish({
+            "source": self.name,
+            "source_type": "agent",
+            "type": msg.type,
+            "content": msg.content,
+            "timestamp": msg.timestamp.isoformat(),
+        })
+
     async def run(self):
         try:
             await self._run()
         except Exception as e:
-            await self.output_queue.put(AgentMessage(type="system", content=f"[fatal] Agent loop crashed: {e}"))
+            await self._emit(AgentMessage(type="system", content=f"[fatal] Agent loop crashed: {e}"))
 
     async def _run(self):
         client = anthropic.AsyncAnthropic()
@@ -91,9 +102,9 @@ class Agent:
         saved = model.load_history(self.name)
         if saved:
             self.history = saved
-            await self.output_queue.put(AgentMessage(type="system", content=f"[ready] {self.name} is online. (history restored)"))
+            await self._emit(AgentMessage(type="system", content=f"[ready] {self.name} is online. (history restored)"))
         else:
-            await self.output_queue.put(AgentMessage(type="system", content=f"[ready] {self.name} is online."))
+            await self._emit(AgentMessage(type="system", content=f"[ready] {self.name} is online."))
         while True:
             if self.status == "stopped":
                 await asyncio.sleep(0.5)
@@ -105,23 +116,23 @@ class Agent:
                 continue
 
             if self.status == "stopped":
-                await self.output_queue.put(AgentMessage(type="system", content="[stopped] Agent is stopped. Message discarded."))
+                await self._emit(AgentMessage(type="system", content="[stopped] Agent is stopped. Message discarded."))
                 continue
 
             if source == "manager":
-                await self.output_queue.put(AgentMessage(type="received", content=f"<- Manager: {msg}"))
+                await self._emit(AgentMessage(type="received", content=f"<- Manager: {msg}"))
 
             self.history.append({"role": "user", "content": msg})
             full_text = ""
             tool_iterations = 0
             while True:
                 if self.status == "stopped":
-                    await self.output_queue.put(AgentMessage(type="system", content="[stopped] Agent halted mid-task."))
+                    await self._emit(AgentMessage(type="system", content="[stopped] Agent halted mid-task."))
                     break
 
                 tool_iterations += 1
                 if tool_iterations > _MAX_TOOL_ITERATIONS:
-                    await self.output_queue.put(AgentMessage(type="system", content=f"[safety] Tool loop exceeded {_MAX_TOOL_ITERATIONS} iterations. Stopping."))
+                    await self._emit(AgentMessage(type="system", content=f"[safety] Tool loop exceeded {_MAX_TOOL_ITERATIONS} iterations. Stopping."))
                     break
 
                 final_message = None
@@ -136,18 +147,18 @@ class Agent:
                         ) as stream:
                             async for delta in stream.text_stream:
                                 full_text += delta
-                                await self.output_queue.put(AgentMessage(type="log", content=delta))
+                                await self._emit(AgentMessage(type="log", content=delta))
                             final_message = await stream.get_final_message()
                         break
                     except anthropic.RateLimitError:
                         wait = 5 * (2 ** attempt)
-                        await self.output_queue.put(AgentMessage(type="system", content=f"[rate limit] Waiting {wait}s before retry ({attempt + 1}/3)..."))
+                        await self._emit(AgentMessage(type="system", content=f"[rate limit] Waiting {wait}s before retry ({attempt + 1}/3)..."))
                         await asyncio.sleep(wait)
                     except Exception as e:
-                        await self.output_queue.put(AgentMessage(type="system", content=f"[error] API call failed: {e}"))
+                        await self._emit(AgentMessage(type="system", content=f"[error] API call failed: {e}"))
                         break
                 if final_message is None:
-                    await self.output_queue.put(AgentMessage(type="system", content="[error] API call failed after 3 retries."))
+                    await self._emit(AgentMessage(type="system", content="[error] API call failed after 3 retries."))
                     break
 
                 if final_message.stop_reason == "end_turn":
@@ -161,9 +172,9 @@ class Agent:
                     for block in final_message.content:
                         if block.type != "tool_use":
                             continue
-                        await self.output_queue.put(AgentMessage(type="tool_call", content=f"{block.name}({block.input})"))
+                        await self._emit(AgentMessage(type="tool_call", content=f"{block.name}({block.input})"))
                         result = agent_tools[block.name](**block.input)
-                        await self.output_queue.put(AgentMessage(type="tool_result", content=str(result)))
+                        await self._emit(AgentMessage(type="tool_result", content=str(result)))
                         # Truncate large results (e.g. file reads) before storing in history
                         result_str = json.dumps(result)
                         if len(result_str) > _HISTORY_TOOL_RESULT_CAP:
@@ -179,12 +190,12 @@ class Agent:
 
                 elif final_message.stop_reason == "max_tokens":
                     self.history.append({"role": "assistant", "content": full_text})
-                    await self.output_queue.put(AgentMessage(type="system", content="[max tokens] Response cut off — continuing..."))
+                    await self._emit(AgentMessage(type="system", content="[max tokens] Response cut off — continuing..."))
                     self.history.append({"role": "user", "content": "Continue."})
                     full_text = ""
                     # tool_iterations acts as the continuation cap — loop will stop at _MAX_TOOL_ITERATIONS
 
                 else:
                     self.history.append({"role": "assistant", "content": full_text})
-                    await self.output_queue.put(AgentMessage(type="system", content=f"[safety] Unexpected stop reason: {final_message.stop_reason!r}. Stopping."))
+                    await self._emit(AgentMessage(type="system", content=f"[safety] Unexpected stop reason: {final_message.stop_reason!r}. Stopping."))
                     break

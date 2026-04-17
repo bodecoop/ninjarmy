@@ -33,6 +33,8 @@ class ManagerAgent:
         agent = Agent(AgentSpec(name=name, role=role, task=task, id=self.agent_ids, model=DEFAULT_MODEL))
         AgentRegistry.register(agent)
         agent.start()
+        from ninjarmy.core.event_bus import EventBus
+        EventBus.get().publish({"type": "agent_hired", "name": name, "role": role, "task": task})
         return agent
 
     def fire_agent(self, agent_id: int) -> None:
@@ -66,6 +68,17 @@ class ManagerAgent:
     def send_message(self, msg: str) -> None:
         self.inbox.put_nowait(msg)
 
+    async def _emit(self, msg: "AgentMessage") -> None:
+        await self.output_queue.put(msg)
+        from ninjarmy.core.event_bus import EventBus
+        EventBus.get().publish({
+            "source": "manager",
+            "source_type": "manager",
+            "type": msg.type,
+            "content": msg.content,
+            "timestamp": msg.timestamp.isoformat(),
+        })
+
     async def run(self) -> None:
         client = anthropic.AsyncAnthropic()
         while True:
@@ -81,7 +94,7 @@ class ManagerAgent:
             while True:
                 tool_iterations += 1
                 if tool_iterations > 10:
-                    await self.output_queue.put(AgentMessage(type="system", content="[safety] Tool loop exceeded 10 iterations. Stopping."))
+                    await self._emit(AgentMessage(type="system", content="[safety] Tool loop exceeded 10 iterations. Stopping."))
                     break
 
                 try:
@@ -94,10 +107,10 @@ class ManagerAgent:
                     ) as stream:
                         async for delta in stream.text_stream:
                             full_text += delta
-                            await self.output_queue.put(AgentMessage(type="log", content=delta))
+                            await self._emit(AgentMessage(type="log", content=delta))
                         final_message = await stream.get_final_message()
                 except Exception as e:
-                    await self.output_queue.put(AgentMessage(type="system", content=f"[error] API call failed: {e}"))
+                    await self._emit(AgentMessage(type="system", content=f"[error] API call failed: {e}"))
                     break
 
                 if final_message.stop_reason == "end_turn":
@@ -110,7 +123,7 @@ class ManagerAgent:
                     for block in final_message.content:
                         if block.type != "tool_use":
                             continue
-                        await self.output_queue.put(AgentMessage(type="tool_call", content=f"{block.name}({block.input})"))
+                        await self._emit(AgentMessage(type="tool_call", content=f"{block.name}({block.input})"))
                         try:
                             result = MANAGER_TOOLS[block.name](**block.input)
                         except Exception as e:
@@ -119,8 +132,8 @@ class ManagerAgent:
                         # if block.name == "send_to_agent":
                             # agent_name = block.input.get("agent_name", "?")
                             # message = block.input.get("message", "")
-                            # await self.output_queue.put(AgentMessage(type="route", content=f"-> {agent_name}: {message}"))
-                        await self.output_queue.put(AgentMessage(type="tool_result", content=str(result)))
+                            # await self._emit(AgentMessage(type="route", content=f"-> {agent_name}: {message}"))
+                        await self._emit(AgentMessage(type="tool_result", content=str(result)))
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": block.id,
@@ -131,12 +144,12 @@ class ManagerAgent:
 
                 elif final_message.stop_reason == "max_tokens":
                     self.history.append({"role": "assistant", "content": full_text})
-                    await self.output_queue.put(AgentMessage(type="system", content="[safety] Response cut off: max tokens reached."))
+                    await self._emit(AgentMessage(type="system", content="[safety] Response cut off: max tokens reached."))
                     break
 
                 else:
                     self.history.append({"role": "assistant", "content": full_text})
-                    await self.output_queue.put(AgentMessage(type="system", content=f"[safety] Unexpected stop reason: {final_message.stop_reason!r}. Stopping."))
+                    await self._emit(AgentMessage(type="system", content=f"[safety] Unexpected stop reason: {final_message.stop_reason!r}. Stopping."))
                     break
 
     @classmethod

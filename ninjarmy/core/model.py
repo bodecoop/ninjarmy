@@ -78,6 +78,24 @@ def delete_agent(id: int):
     conn.commit()
 
 
+# Only these keys are accepted by the API when sending messages back.
+# The SDK adds extra fields like `parsed_output`, `citations`, etc. on
+# returned objects that are NOT valid as inputs — strip them here.
+_BLOCK_ALLOWED_KEYS = {
+    "text":        {"type", "text"},
+    "tool_use":    {"type", "id", "name", "input"},
+    "tool_result": {"type", "tool_use_id", "content", "is_error"},
+}
+
+
+def _clean_block(block: dict) -> dict:
+    """Remove SDK-only fields that the API rejects when echoed back."""
+    allowed = _BLOCK_ALLOWED_KEYS.get(block.get("type"))
+    if allowed is None:
+        return block
+    return {k: v for k, v in block.items() if k in allowed}
+
+
 def _serialize_message(msg: dict) -> dict:
     """Convert a history message to a JSON-safe dict.
     Assistant messages from tool_use turns have list content containing
@@ -89,9 +107,9 @@ def _serialize_message(msg: dict) -> dict:
     serialized = []
     for block in content:
         if isinstance(block, dict):
-            serialized.append(block)
+            serialized.append(_clean_block(block))
         elif hasattr(block, "model_dump"):
-            serialized.append(block.model_dump())
+            serialized.append(_clean_block(block.model_dump()))
         else:
             serialized.append({"type": "text", "text": str(block)})
     return {**msg, "content": serialized}
