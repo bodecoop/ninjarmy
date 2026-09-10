@@ -148,7 +148,7 @@ class Agent:
                     try:
                         async with client.messages.stream(
                             model=self.model,
-                            max_tokens=8192,
+                            max_tokens=32768,
                             tools=agent_schemas,
                             system=system,
                             messages=self.history,

@@ -17,7 +17,7 @@ class ManagerAgent:
 
     def __init__(self, spec: ManagerSpec):
         existing = AgentRegistry.all()
-        self.project_name = "todolist"
+        self.project_name = ""
         self.agent_ids = max((a.id for a in existing), default=0)
         self.model: str = spec.model
         self.output_queue: asyncio.Queue[AgentMessage] = asyncio.Queue()
