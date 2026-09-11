@@ -213,11 +213,11 @@ def make_agent_tools(agent_name: str) -> tuple[dict, list]:
         have finished your work so other agents know the files are free.
 
         Returns:
-            {"success": True}
+            {"success": True} or {"error": str} path couldn't be found
         """
         board_path = model.STATE_PATH / "task_board.md"
         if not board_path.exists():
-            return {"success": True}
+            return {"error": "board path does not exist"}
         lines = board_path.read_text(encoding="utf-8").splitlines()
         updated = []
         for line in lines:

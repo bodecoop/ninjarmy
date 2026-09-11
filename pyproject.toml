@@ -19,5 +19,11 @@ dev = ["pytest", "pytest-asyncio"]
 [tool.setuptools.packages.find]
 include = ["ninjarmy*"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+asyncio_mode = "auto"
+
 [project.scripts]
 ninjarmy = "ninjarmy.cli.main:cli"
